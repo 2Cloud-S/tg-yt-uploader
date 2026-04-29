@@ -4,7 +4,7 @@ on:
   schedule:
     # Runs at 04:00 UTC daily = 9:00 AM PKT (Pakistan Standard Time = UTC+5)
     # Change the time here: https://crontab.guru
-    - cron: '0 4 * * *'
+    - cron: '0 16 * * *'
 
   # Also allows manual trigger from GitHub Actions tab
   workflow_dispatch:

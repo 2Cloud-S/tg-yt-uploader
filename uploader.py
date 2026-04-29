@@ -44,16 +44,19 @@ REFRESH_TOKEN     = os.environ['YOUTUBE_REFRESH_TOKEN']
 # Tier 3 = included only if many slots remain
 CHANNELS = {
     1: [
-        'khabib_nurmagomedov',
+        'mmafighting',
+        'arman_ufc_official',
         'ufc',
+        'kchimaev',
     ],
     2: [
         'mma_org',
         'ufcnews',
         'danawhite',
+        'khabib_nurmagomedov',
     ],
     3: [
-        'mmafighting',
+
         'espnmma',
         'bellator',
         # add as many as you want — they only get picked if slots available
