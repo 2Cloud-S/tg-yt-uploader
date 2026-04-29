@@ -1,0 +1,3 @@
+# This file tracks uploaded videos to prevent duplicates
+# Format: channelname_messageid (one per line)
+# Auto-updated by GitHub Actions after each run
