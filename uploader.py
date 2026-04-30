@@ -95,7 +95,10 @@ MAX_ARCHIVE_UPLOADS = 1   # max from archive channels
 # Longform always max 1 Short per run
 
 YOUTUBE_CATEGORY  = '17'  # 17 = Sports
-UPLOAD_DELAY      = 20    # seconds between uploads
+UPLOAD_DELAY      = 5     # seconds between uploads (reduced)
+DOWNLOAD_TIMEOUT  = 300   # max seconds per download (5 min)
+DOWNLOAD_RETRIES  = 3     # retry on Telegram connection drops
+MAX_VIDEO_SIZE_MB = 200   # skip videos larger than this
 DOWNLOAD_FOLDER   = '/tmp/downloads'
 UPLOADED_LOG      = 'uploaded_ids.txt'     # committed to repo
 ARCHIVE_STATE     = 'archive_state.json'   # committed to repo
@@ -119,7 +122,7 @@ LATE_KEYWORDS = [
 ]
 
 UFC_HASHTAGS = """
-#armantsarukyan #sheanstrikland #khamzatchimeav #UFC #MMA #UFCHighlights #MixedMartialArts #UFCFights #UFCNews
+#UFC #MMA #UFCHighlights #MixedMartialArts #UFCFights #UFCNews
 #Knockout #KO #Submission #UFCChampion #FightNight #PPV
 #Boxing #Kickboxing #BJJ #Wrestling #Grappling
 #Khabib #IslamMakhachev #JonJones #ConorMcGregor #StipeMiocic
@@ -129,7 +132,6 @@ UFC_HASHTAGS = """
 SHORTS_HASHTAGS = """
 #Shorts #UFCShorts #MMAShorts #FightShorts
 #UFC #MMA #Knockout #Submission #FightFinish #Octagon
-#armantsarukyan #sheanstrikland #khamzatchimeav
 """
 
 
@@ -408,6 +410,40 @@ def upload_to_youtube(youtube, file_path, title, description,
 #  PHASE PROCESSORS
 # ============================================================
 
+
+# ============================================================
+#  DOWNLOAD WITH RETRY
+# ============================================================
+
+async def download_with_retry(tg_client, msg, dest=None):
+    """Download with retries on Telegram connection drops."""
+    dest = dest or DOWNLOAD_FOLDER
+    for attempt in range(1, DOWNLOAD_RETRIES + 1):
+        try:
+            path = await asyncio.wait_for(
+                tg_client.download_media(msg, file=dest),
+                timeout=DOWNLOAD_TIMEOUT
+            )
+            if path:
+                print(f'   ✅ Downloaded: {os.path.basename(str(path))}')
+                return str(path)
+        except asyncio.TimeoutError:
+            print(f'   ⏱️  Timeout on attempt {attempt}/{DOWNLOAD_RETRIES}')
+        except Exception as e:
+            print(f'   ⚠️  Attempt {attempt}/{DOWNLOAD_RETRIES} failed: {e}')
+        if attempt < DOWNLOAD_RETRIES:
+            wait = attempt * 5
+            print(f'   🔄 Retrying in {wait}s...')
+            await asyncio.sleep(wait)
+            # Reconnect Telegram on connection errors
+            try:
+                await tg_client.connect()
+            except Exception:
+                pass
+    print(f'   ❌ Download failed after {DOWNLOAD_RETRIES} attempts')
+    return None
+
+
 async def process_regular(tg_client, youtube, msg, channel, uid, uploaded_ids):
     size_mb = msg.media.document.size / 1024 / 1024
     caption = (msg.text or '').strip()
@@ -423,12 +459,14 @@ async def process_regular(tg_client, youtube, msg, channel, uid, uploaded_ids):
     desc = build_description(caption, translated, was_translated)
     print(f'   Title: {title}')
 
+    size_mb = msg.media.document.size / 1024 / 1024
+    if size_mb > MAX_VIDEO_SIZE_MB:
+        print(f'   ⏭️  Skipping: {size_mb:.1f} MB exceeds limit ({MAX_VIDEO_SIZE_MB} MB)')
+        return False
+
     print('   📥 Downloading...')
-    try:
-        path = str(await tg_client.download_media(msg, file=DOWNLOAD_FOLDER))
-        print(f'   ✅ {os.path.basename(path)}')
-    except Exception as e:
-        print(f'   ❌ Download failed: {e}')
+    path = await download_with_retry(tg_client, msg)
+    if path is None:
         return False
 
     path = apply_filter_and_reencode(path)
@@ -468,11 +506,8 @@ async def process_longform(tg_client, youtube, msg, channel, uid, uploaded_ids):
 
     if size_mb <= 150:
         print(f'   📥 Downloading full video ({size_mb:.1f} MB)...')
-        try:
-            raw_path = str(await tg_client.download_media(msg, file=DOWNLOAD_FOLDER))
-            print(f'   ✅ Downloaded')
-        except Exception as e:
-            print(f'   ❌ Download failed: {e}')
+        raw_path = await download_with_retry(tg_client, msg)
+        if raw_path is None:
             return False
     else:
         # Partial download: only the bytes we need
@@ -556,11 +591,8 @@ async def process_archive(tg_client, youtube, msg, channel, uid, uploaded_ids):
     print(f'   Title: {title}')
 
     print('   📥 Downloading...')
-    try:
-        path = str(await tg_client.download_media(msg, file=DOWNLOAD_FOLDER))
-        print(f'   ✅ Downloaded')
-    except Exception as e:
-        print(f'   ❌ Download failed: {e}')
+    path = await download_with_retry(tg_client, msg)
+    if path is None:
         return False
 
     path = apply_filter_and_reencode(path)
