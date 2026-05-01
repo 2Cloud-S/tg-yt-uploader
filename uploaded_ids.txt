@@ -9,3 +9,8 @@ tier_Boxing_IBA_1762
 tier_UsmnNurmagomedov_185
 longform_ufcmmaarxivn1_1819
 archive_UFC_clip_sport_162
+tier_arman_ufc_official_849
+tier_Boxing_IBA_1763
+tier_rcc_sport_10773
+longform_ufcmmaarxivn1_1818
+archive_UFC_clip_sport_161
