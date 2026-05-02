@@ -14,3 +14,7 @@ tier_Boxing_IBA_1763
 tier_rcc_sport_10773
 longform_ufcmmaarxivn1_1818
 archive_UFC_clip_sport_161
+tier_Boxing_IBA_1781
+tier_rcc_sport_10781
+longform_ufcmmaarxivn1_1817
+archive_UFC_clip_sport_160
