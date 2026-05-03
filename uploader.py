@@ -73,8 +73,8 @@ CHANNELS = {
 # ── Longform: 3min+ videos → smart clip → Short ──────────────
 # Only 1 Short produced per run from this entire category
 LONGFORM_CHANNELS = [
-     'ufcmmaarxivn1',
-     'arshiv_a',
+     #'ufcmmaarxivn1',
+     #'arshiv_a',
     # Add real channel usernames here
 ]
 
@@ -82,7 +82,7 @@ LONGFORM_CHANNELS = [
 # Scans most-recent-first, remembers position across runs
 ARCHIVE_CHANNELS = [
     'UFC_clip_sport',
-     'Free_525',
+     #'Free_525',
      'wwe_chlips',
      'Boxing_clips',
      'KhamzatChimaevVsSeanStrickland',
