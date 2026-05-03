@@ -3,3 +3,18 @@
 # Auto-updated by GitHub Actions after each run
 arman_ufc_official_841
 khabib_nurmagomedov_367
+tier_arman_ufc_official_847
+tier_khabib_nurmagomedov_367
+tier_Boxing_IBA_1762
+tier_UsmnNurmagomedov_185
+longform_ufcmmaarxivn1_1819
+archive_UFC_clip_sport_162
+tier_arman_ufc_official_849
+tier_Boxing_IBA_1763
+tier_rcc_sport_10773
+longform_ufcmmaarxivn1_1818
+archive_UFC_clip_sport_161
+tier_Boxing_IBA_1781
+tier_rcc_sport_10781
+longform_ufcmmaarxivn1_1817
+archive_UFC_clip_sport_160
