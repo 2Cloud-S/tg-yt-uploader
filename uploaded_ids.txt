@@ -20,3 +20,6 @@ longform_ufcmmaarxivn1_1817
 archive_UFC_clip_sport_160
 tier_rcc_sport_10782
 archive_UFC_clip_sport_159
+tier_arman_ufc_official_856
+tier_rcc_sport_10784
+archive_UFC_clip_sport_158
