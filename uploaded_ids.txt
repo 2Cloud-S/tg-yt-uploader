@@ -28,3 +28,6 @@ tier_Boxing_IBA_1792
 archive_UFC_clip_sport_157
 tier_arman_ufc_official_873
 archive_UFC_clip_sport_156
+tier_arman_ufc_official_888
+tier_khabib_nurmagomedov_373
+archive_UFC_clip_sport_155
