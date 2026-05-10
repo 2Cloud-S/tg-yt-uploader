@@ -38,3 +38,6 @@ tier_arman_ufc_official_909
 tier_Boxing_IBA_1794
 tier_rcc_sport_10828
 archive_UFC_clip_sport_153
+tier_arman_ufc_official_913
+tier_rcc_sport_10837
+archive_UFC_clip_sport_151
