@@ -50,3 +50,6 @@ archive_UFC_clip_sport_149
 tier_arman_ufc_official_925
 tier_Boxing_IBA_1799
 archive_UFC_clip_sport_148
+tier_Boxing_IBA_1802
+tier_rcc_sport_10847
+archive_UFC_clip_sport_147
