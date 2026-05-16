@@ -55,3 +55,6 @@ tier_rcc_sport_10847
 archive_UFC_clip_sport_147
 tier_arman_ufc_official_928
 archive_UFC_clip_sport_146
+tier_arman_ufc_official_937
+tier_rcc_sport_10858
+archive_UFC_clip_sport_145
