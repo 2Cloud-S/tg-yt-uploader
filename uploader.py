@@ -1,33 +1,24 @@
 """
-Telegram → YouTube Auto-Uploader (Full Edition)
-================================================
-Three channel categories:
+Telegram → YouTube Auto-Uploader
+=================================
+Config-driven — supports multiple niches (UFC, Animals, etc.)
+Pass niche via --niche argument or NICHE env var.
 
-  CHANNELS (tier 1/2/3)
-    - Short videos, grab latest 1 each, upload as regular video
-    - Max MAX_REGULAR_UPLOADS per run
-
-  LONGFORM_CHANNELS
-    - Long videos (3min+), smart clip → 9:16 YouTube Short
-    - Caption keywords decide segment (early/late)
-    - Downloads only needed portion, not full video
-    - Max 1 Short per run
-
-  ARCHIVE_CHANNELS
-    - Old/inactive channels, crawls history most-recent-first
-    - Handles future new content automatically
-    - Max MAX_ARCHIVE_UPLOADS per run
-
-Zero manual input — runs via GitHub Actions on schedule.
+Usage:
+    python uploader.py --niche ufc
+    python uploader.py --niche animals
+    NICHE=animals python uploader.py
 """
 
+import argparse
 import asyncio
-import os
 import json
+import os
 import subprocess
+import sys
 import time
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -39,125 +30,53 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
+
 # ============================================================
-#  CONFIG
+#  LOAD CONFIG
 # ============================================================
 
-TELEGRAM_API_ID   = int(os.environ['TELEGRAM_API_ID'])
-TELEGRAM_API_HASH = os.environ['TELEGRAM_API_HASH']
-CLIENT_ID         = os.environ['YOUTUBE_CLIENT_ID']
-CLIENT_SECRET     = os.environ['YOUTUBE_CLIENT_SECRET']
-REFRESH_TOKEN     = os.environ['YOUTUBE_REFRESH_TOKEN']
+def load_config(niche: str) -> dict:
+    path = Path(__file__).parent / 'configs' / f'{niche}.json'
+    if not path.exists():
+        print(f'❌ Config not found: {path}')
+        print(f'   Available: {[p.stem for p in Path("configs").glob("*.json")]}')
+        sys.exit(1)
+    with open(path) as f:
+        cfg = json.load(f)
+    print(f'✅ Loaded config: {niche}')
+    return cfg
 
-# ── Tier channels: short clips, 1 latest video each ──────────
-CHANNELS = {
-    1: [
-        'arman_ufc_official',
-        'khabib_nurmagomedov',
-        'Boxing_IBA',
-        'kchimaev',
-        'UsmnNurmagomedov',
-        
-    ],
-    2: [
-        'wbcboxing_official'
-        'mma_org',
-        'danawhite',
-        'rcc_sport'
-    ],
-    3: [
-        # add low-priority channels here
-    ],
-}
-
-# ── Longform: 3min+ videos → smart clip → Short ──────────────
-# Only 1 Short produced per run from this entire category
-LONGFORM_CHANNELS = [
-     #'ufcmmaarxivn1',
-     #'arshiv_a',
-    # Add real channel usernames here
-]
-
-# ── Archive: old/inactive channels, crawl history ────────────
-# Scans most-recent-first, remembers position across runs
-ARCHIVE_CHANNELS = [
-    'UFC_clip_sport',
-     #'Free_525',
-     'wwe_chlips',
-     'Boxing_clips',
-     'KhamzatChimaevVsSeanStrickland',
-
-]
-
-# ── Run limits ────────────────────────────────────────────────
-MAX_REGULAR_UPLOADS = 4   # max from tier channels
-MAX_ARCHIVE_UPLOADS = 1   # max from archive channels
-# Longform always max 1 Short per run
-
-YOUTUBE_CATEGORY  = '17'  # 17 = Sports
-UPLOAD_DELAY      = 5     # seconds between uploads (reduced)
-DOWNLOAD_TIMEOUT  = 300   # max seconds per download (5 min)
-DOWNLOAD_RETRIES  = 3     # retry on Telegram connection drops
-MAX_VIDEO_SIZE_MB = 200   # skip videos larger than this
-DOWNLOAD_FOLDER   = '/tmp/downloads'
-UPLOADED_LOG      = 'uploaded_ids.txt'     # committed to repo
-ARCHIVE_STATE     = 'archive_state.json'   # committed to repo
-
-# ── Short clip settings ───────────────────────────────────────
-SHORT_DURATION  = 58    # seconds (must be under 60 for Shorts)
-SHORT_MIN_SECS  = 180   # videos longer than this go to longform path
-
-# ── Keywords for smart segment selection ─────────────────────
-# High score = early finish → grab first 30% of video
-EARLY_KEYWORDS = [
-    'round 1', 'r1', 'first round', '1st round',
-    'tko', 'ko', 'knockout', 'submission', 'sub',
-    'finish', 'stoppage', 'tap', 'tapout', 'early',
-]
-# High score = late action → grab last 20% of video
-LATE_KEYWORDS = [
-    'round 3', 'round 4', 'round 5', 'r3', 'r4', 'r5',
-    'decision', 'unanimous', 'split', 'judges',
-    'championship round', 'main event', 'five rounds',
-]
-
-UFC_HASHTAGS = """
-#UFC #MMA #UFCHighlights #MixedMartialArts #UFCFights #UFCNews
-#Knockout #KO #Submission #UFCChampion #FightNight #PPV
-#Boxing #Kickboxing #BJJ #Wrestling #Grappling
-#Khabib #IslamMakhachev #JonJones #ConorMcGregor #StipeMiocic
-#UFCFightPass #UFCWeekend #MMAFighter #CageMatch #Octagon
-"""
-
-SHORTS_HASHTAGS = """
-#Shorts #UFCShorts #MMAShorts #FightShorts
-#UFC #MMA #Knockout #Submission #FightFinish #Octagon
-"""
+def get_secret(key: str) -> str:
+    val = os.environ.get(key, '')
+    if not val:
+        print(f'⚠️  Missing env var: {key}')
+    return val
 
 
 # ============================================================
 #  PERSISTENCE
 # ============================================================
 
-def load_uploaded_ids():
-    if not os.path.exists(UPLOADED_LOG):
+def load_uploaded_ids(cfg: dict) -> set:
+    path = cfg['uploaded_log']
+    if not os.path.exists(path):
         return set()
-    with open(UPLOADED_LOG, 'r') as f:
+    with open(path) as f:
         return set(line.strip() for line in f if line.strip())
 
-def save_uploaded_id(uid):
-    with open(UPLOADED_LOG, 'a') as f:
+def save_uploaded_id(cfg: dict, uid: str):
+    with open(cfg['uploaded_log'], 'a') as f:
         f.write(f'{uid}\n')
 
-def load_archive_state():
-    """Tracks last-scanned message ID per archive channel."""
-    if not os.path.exists(ARCHIVE_STATE):
+def load_archive_state(cfg: dict) -> dict:
+    path = cfg['archive_state']
+    if not os.path.exists(path):
         return {}
-    with open(ARCHIVE_STATE, 'r') as f:
+    with open(path) as f:
         return json.load(f)
 
-def save_archive_state(state):
-    with open(ARCHIVE_STATE, 'w') as f:
+def save_archive_state(cfg: dict, state: dict):
+    with open(cfg['archive_state'], 'w') as f:
         json.dump(state, f, indent=2)
 
 
@@ -167,7 +86,7 @@ def save_archive_state(state):
 
 translator = Translator()
 
-def translate_if_russian(text):
+def translate_if_russian(text: str):
     if not text or len(text.strip()) < 3:
         return text, False
     try:
@@ -180,16 +99,15 @@ def translate_if_russian(text):
         print(f'   ⚠️ Translation error: {e}')
         return text, False
 
-def build_description(original, translated, was_translated, extra_tags=''):
+def build_description(cfg, original, translated, was_translated, is_short=False):
     parts = []
     if translated:
         parts.append(translated)
     if was_translated and original:
         parts.append(f'\n---\n🇷🇺 Original:\n{original}')
     parts.append('\n' + '─' * 40)
-    parts.append(UFC_HASHTAGS)
-    if extra_tags:
-        parts.append(extra_tags)
+    tags = cfg['shorts_hashtags'] if is_short else cfg['video_hashtags']
+    parts.append(' '.join(tags))
     return '\n'.join(parts)
 
 
@@ -197,7 +115,7 @@ def build_description(original, translated, was_translated, extra_tags=''):
 #  TELEGRAM HELPERS
 # ============================================================
 
-def is_video_message(message):
+def is_video_message(message) -> bool:
     if not message.media:
         return False
     if not isinstance(message.media, MessageMediaDocument):
@@ -207,34 +125,31 @@ def is_video_message(message):
             return True
     return False
 
-def get_tg_video_duration(message):
+def get_tg_video_duration(message) -> float:
     for attr in message.media.document.attributes:
         if isinstance(attr, DocumentAttributeVideo):
             return attr.duration or 0
     return 0
 
-async def get_latest_short_video(tg_client, channel, uploaded_ids):
-    """Most recent unuploaded video from a tier channel."""
+async def get_latest_short_video(tg_client, channel, uploaded_ids, uid_prefix='tier'):
     try:
         async for msg in tg_client.iter_messages(channel, limit=50):
             if not is_video_message(msg):
                 continue
-            uid = f'tier_{channel}_{msg.id}'
+            uid = f'{uid_prefix}_{channel}_{msg.id}'
             if uid not in uploaded_ids:
                 return msg, uid
-            else:
-                return None, None  # latest already uploaded
+            return None, None   # latest already done
     except Exception as e:
         print(f'   ❌ @{channel}: {e}')
     return None, None
 
-async def get_latest_longform_video(tg_client, channel, uploaded_ids):
-    """Most recent unuploaded video longer than SHORT_MIN_SECS."""
+async def get_latest_longform_video(tg_client, channel, uploaded_ids, min_secs):
     try:
         async for msg in tg_client.iter_messages(channel, limit=30):
             if not is_video_message(msg):
                 continue
-            if get_tg_video_duration(msg) < SHORT_MIN_SECS:
+            if get_tg_video_duration(msg) < min_secs:
                 continue
             uid = f'longform_{channel}_{msg.id}'
             if uid not in uploaded_ids:
@@ -244,12 +159,6 @@ async def get_latest_longform_video(tg_client, channel, uploaded_ids):
     return None, None
 
 async def get_archive_video(tg_client, channel, uploaded_ids):
-    """
-    Scans archive channel most-recent-first.
-    Returns first unuploaded video found.
-    Works for both inactive channels (old content) and
-    channels that get new content in future.
-    """
     try:
         async for msg in tg_client.iter_messages(channel, limit=100):
             if not is_video_message(msg):
@@ -263,29 +172,56 @@ async def get_archive_video(tg_client, channel, uploaded_ids):
 
 
 # ============================================================
+#  DOWNLOAD WITH RETRY
+# ============================================================
+
+async def download_with_retry(tg_client, msg, dest, retries=3, timeout=300):
+    for attempt in range(1, retries + 1):
+        try:
+            path = await asyncio.wait_for(
+                tg_client.download_media(msg, file=dest),
+                timeout=timeout
+            )
+            if path:
+                print(f'   ✅ Downloaded: {os.path.basename(str(path))}')
+                return str(path)
+        except asyncio.TimeoutError:
+            print(f'   ⏱️  Timeout (attempt {attempt}/{retries})')
+        except Exception as e:
+            print(f'   ⚠️  Attempt {attempt}/{retries}: {e}')
+        if attempt < retries:
+            wait = attempt * 5
+            print(f'   🔄 Retry in {wait}s...')
+            await asyncio.sleep(wait)
+            try:
+                await tg_client.connect()
+            except Exception:
+                pass
+    print(f'   ❌ Download failed after {retries} attempts')
+    return None
+
+
+# ============================================================
 #  VIDEO PROCESSING
 # ============================================================
 
-def get_duration_ffprobe(path):
-    cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json',
-           '-show_format', path]
+def get_duration_ffprobe(path) -> float:
+    cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', path]
     r = subprocess.run(cmd, capture_output=True, text=True)
     try:
         return float(json.loads(r.stdout)['format']['duration'])
     except Exception:
-        return None
+        return 0.0
 
-def apply_filter_and_reencode(input_path):
-    """Standard filter for regular/archive videos."""
+def apply_filter_and_reencode(input_path) -> str:
     out = input_path.rsplit('.', 1)[0] + '_out.mp4'
-    print(f'   🎨 Filtering + re-encoding...')
+    print('   🎨 Filtering + re-encoding...')
     vf = "eq=brightness=0.04:contrast=1.05:saturation=1.1,unsharp=5:5:0.5:5:5:0.0"
-    cmd = ['ffmpeg', '-y', '-i', input_path,
-           '-vf', vf, '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+    cmd = ['ffmpeg', '-y', '-i', input_path, '-vf', vf,
+           '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
            '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        # Fallback plain re-encode (fixes audio at minimum)
         cmd2 = ['ffmpeg', '-y', '-i', input_path,
                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
                 '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]
@@ -298,40 +234,27 @@ def apply_filter_and_reencode(input_path):
     print(f'   ✅ Done: {os.path.getsize(out)/1024/1024:.1f} MB')
     return out
 
-
-def pick_segment(caption, total_duration):
-    """
-    Keyword analysis on caption → decide which portion to clip.
-    Returns (start_seconds, clip_duration_seconds).
-    """
+def pick_segment(cfg, caption, total_duration):
     text = (caption or '').lower()
-    early_score = sum(1 for kw in EARLY_KEYWORDS if kw in text)
-    late_score  = sum(1 for kw in LATE_KEYWORDS  if kw in text)
+    early_score = sum(1 for kw in cfg['early_keywords'] if kw in text)
+    late_score  = sum(1 for kw in cfg['late_keywords']  if kw in text)
+    short_dur   = cfg['short_duration']
 
     print(f'   🧠 Keywords: early={early_score} late={late_score}', end=' → ')
 
     if early_score > late_score:
-        # Likely early finish — first 30%
         start = max(5, total_duration * 0.05)
-        end   = min(start + SHORT_DURATION, total_duration * 0.35)
+        end   = min(start + short_dur, total_duration * 0.35)
         print('EARLY segment')
     else:
-        # Late action or unknown — last 20%
         end   = total_duration - 5
-        start = max(0, end - SHORT_DURATION)
+        start = max(0, end - short_dur)
         print('LATE segment')
 
-    return start, min(SHORT_DURATION, end - start)
+    return start, min(short_dur, end - start)
 
-
-def make_short(input_path, start_s, duration_s, output_path):
-    """
-    Cuts segment, crops to 9:16 vertical, applies filter.
-    Uses -ss before -i for fast seeking (no full decode needed).
-    """
-    print(f'   ✂️  Clipping {start_s:.0f}s–{start_s+duration_s:.0f}s → 9:16 Short...')
-
-    # crop to 9:16 from center, scale to 1080x1920, filter
+def make_short(input_path, start_s, duration_s, output_path) -> bool:
+    print(f'   ✂️  Clipping {start_s:.0f}s–{start_s+duration_s:.0f}s → 9:16...')
     vf = (
         "crop=ih*9/16:ih,"
         "scale=1080:1920,"
@@ -340,20 +263,18 @@ def make_short(input_path, start_s, duration_s, output_path):
     )
     cmd = [
         'ffmpeg', '-y',
-        '-ss', str(start_s),          # seek BEFORE input = fast, no full decode
-        '-i', input_path,
+        '-ss', str(start_s), '-i', input_path,
         '-t', str(duration_s),
         '-vf', vf,
         '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
         '-c:a', 'aac', '-b:a', '192k',
-        '-movflags', '+faststart',
-        output_path
+        '-movflags', '+faststart', output_path
     ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        print(f'   ❌ Clip failed: {r.stderr[-300:]}')
+        print(f'   ❌ Clip failed: {r.stderr[-200:]}')
         return False
-    print(f'   ✅ Short ready: {os.path.getsize(output_path)/1024/1024:.1f} MB')
+    print(f'   ✅ Short: {os.path.getsize(output_path)/1024/1024:.1f} MB')
     return True
 
 
@@ -361,26 +282,26 @@ def make_short(input_path, start_s, duration_s, output_path):
 #  YOUTUBE
 # ============================================================
 
-def get_youtube_service():
+def get_youtube_service(cfg):
     creds = Credentials(
         token=None,
-        refresh_token=REFRESH_TOKEN,
+        refresh_token=get_secret(cfg['youtube_refresh_token_secret']),
         token_uri='https://oauth2.googleapis.com/token',
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
+        client_id=get_secret(cfg['youtube_client_id_secret']),
+        client_secret=get_secret(cfg['youtube_client_secret_secret']),
         scopes=['https://www.googleapis.com/auth/youtube.upload']
     )
     creds.refresh(Request())
     return build('youtube', 'v3', credentials=creds)
 
-def upload_to_youtube(youtube, file_path, title, description,
+def upload_to_youtube(youtube, cfg, file_path, title, description,
                       tags=None, is_short=False):
     body = {
         'snippet': {
             'title': title[:100],
             'description': description,
-            'tags': tags or ['UFC','MMA','UFC highlights','knockout','fight'],
-            'categoryId': YOUTUBE_CATEGORY,
+            'tags': tags or cfg['video_tags'],
+            'categoryId': cfg['youtube_category'],
         },
         'status': {'privacyStatus': 'public'},
     }
@@ -410,69 +331,34 @@ def upload_to_youtube(youtube, file_path, title, description,
 #  PHASE PROCESSORS
 # ============================================================
 
-
-# ============================================================
-#  DOWNLOAD WITH RETRY
-# ============================================================
-
-async def download_with_retry(tg_client, msg, dest=None):
-    """Download with retries on Telegram connection drops."""
-    dest = dest or DOWNLOAD_FOLDER
-    for attempt in range(1, DOWNLOAD_RETRIES + 1):
-        try:
-            path = await asyncio.wait_for(
-                tg_client.download_media(msg, file=dest),
-                timeout=DOWNLOAD_TIMEOUT
-            )
-            if path:
-                print(f'   ✅ Downloaded: {os.path.basename(str(path))}')
-                return str(path)
-        except asyncio.TimeoutError:
-            print(f'   ⏱️  Timeout on attempt {attempt}/{DOWNLOAD_RETRIES}')
-        except Exception as e:
-            print(f'   ⚠️  Attempt {attempt}/{DOWNLOAD_RETRIES} failed: {e}')
-        if attempt < DOWNLOAD_RETRIES:
-            wait = attempt * 5
-            print(f'   🔄 Retrying in {wait}s...')
-            await asyncio.sleep(wait)
-            # Reconnect Telegram on connection errors
-            try:
-                await tg_client.connect()
-            except Exception:
-                pass
-    print(f'   ❌ Download failed after {DOWNLOAD_RETRIES} attempts')
-    return None
-
-
-async def process_regular(tg_client, youtube, msg, channel, uid, uploaded_ids):
+async def process_regular(tg_client, youtube, cfg, msg, channel,
+                           uid, uploaded_ids, download_folder):
     size_mb = msg.media.document.size / 1024 / 1024
+    if size_mb > cfg['max_video_size_mb']:
+        print(f'   ⏭️  {size_mb:.1f} MB > limit, skipping')
+        return False
+
     caption = (msg.text or '').strip()
     print(f'   🎬 {size_mb:.1f} MB | ID: {msg.id}')
     print(f'   Caption: {caption[:70] or "[None]"}')
 
-    translated, was_translated = translate_if_russian(caption)
-    if was_translated:
+    translated, was_russian = translate_if_russian(caption)
+    if was_russian:
         print('   🌐 Translated from Russian')
 
-    title = translated.split('\n')[0].strip()[:100] if translated.strip() \
-            else f'UFC Highlights {msg.date.strftime("%Y-%m-%d")}'
-    desc = build_description(caption, translated, was_translated)
+    title = (translated.split('\n')[0].strip()[:100] if translated.strip()
+             else f'{cfg["fallback_title_prefix"]} {msg.date.strftime("%Y-%m-%d")}')
+    desc  = build_description(cfg, caption, translated, was_russian)
     print(f'   Title: {title}')
 
-    size_mb = msg.media.document.size / 1024 / 1024
-    if size_mb > MAX_VIDEO_SIZE_MB:
-        print(f'   ⏭️  Skipping: {size_mb:.1f} MB exceeds limit ({MAX_VIDEO_SIZE_MB} MB)')
-        return False
-
-    print('   📥 Downloading...')
-    path = await download_with_retry(tg_client, msg)
-    if path is None:
+    path = await download_with_retry(tg_client, msg, download_folder)
+    if not path:
         return False
 
     path = apply_filter_and_reencode(path)
     try:
-        upload_to_youtube(youtube, path, title, desc)
-        save_uploaded_id(uid)
+        upload_to_youtube(youtube, cfg, path, title, desc)
+        save_uploaded_id(cfg, uid)
         uploaded_ids.add(uid)
         return True
     except Exception as e:
@@ -483,14 +369,8 @@ async def process_regular(tg_client, youtube, msg, channel, uid, uploaded_ids):
             os.remove(path)
 
 
-async def process_longform(tg_client, youtube, msg, channel, uid, uploaded_ids):
-    """
-    Smart partial download + clip + Short upload.
-    Key insight: -ss before -i in ffmpeg does fast seek without
-    decoding the whole file — so we only process the segment we need.
-    We still download the full file but only process the clip portion.
-    For truly huge files, partial download via offset is attempted first.
-    """
+async def process_longform(tg_client, youtube, cfg, msg, channel,
+                            uid, uploaded_ids, download_folder):
     total_dur = get_tg_video_duration(msg)
     size_mb   = msg.media.document.size / 1024 / 1024
     caption   = (msg.text or '').strip()
@@ -498,66 +378,52 @@ async def process_longform(tg_client, youtube, msg, channel, uid, uploaded_ids):
     print(f'   📹 {size_mb:.1f} MB | {total_dur/60:.1f} min | ID: {msg.id}')
     print(f'   Caption: {caption[:70] or "[None]"}')
 
-    start_s, clip_dur = pick_segment(caption, total_dur)
+    start_s, clip_dur = pick_segment(cfg, caption, total_dur)
 
-    # For files under 150MB download fully (fast enough on GitHub Actions)
-    # For larger files attempt partial byte-range download
-    raw_path = os.path.join(DOWNLOAD_FOLDER, f'lf_{msg.id}_raw.mp4')
-
+    # Under 150 MB: download full (fast enough on GitHub Actions)
+    # Over 150 MB: attempt partial byte-range download
     if size_mb <= 150:
-        print(f'   📥 Downloading full video ({size_mb:.1f} MB)...')
-        raw_path = await download_with_retry(tg_client, msg)
-        if raw_path is None:
+        print(f'   📥 Downloading ({size_mb:.1f} MB)...')
+        raw_path = await download_with_retry(tg_client, msg, download_folder)
+        if not raw_path:
             return False
     else:
-        # Partial download: only the bytes we need
-        total_bytes  = msg.media.document.size
-        byte_start   = int((start_s / total_dur) * total_bytes)
-        # Download 25% extra buffer around the segment
-        byte_end     = int(((start_s + clip_dur * 1.25) / total_dur) * total_bytes)
-        partial_mb   = (byte_end - byte_start) / 1024 / 1024
-        print(f'   📥 Partial download ~{partial_mb:.1f} MB (of {size_mb:.1f} MB)...')
+        total_bytes = msg.media.document.size
+        b_start = int((start_s / total_dur) * total_bytes)
+        b_end   = int(((start_s + clip_dur * 1.25) / total_dur) * total_bytes)
+        partial_mb = (b_end - b_start) / 1024 / 1024
+        raw_path = os.path.join(download_folder, f'lf_{msg.id}_raw.mp4')
+        print(f'   📥 Partial download ~{partial_mb:.1f} MB of {size_mb:.1f} MB...')
         try:
-            await tg_client.download_media(
-                msg, file=raw_path,
-                offset=byte_start,
-                limit=byte_end - byte_start
-            )
-            print(f'   ✅ Partial downloaded')
-            # For partial file, clip starts from beginning
-            start_s = 2
+            await tg_client.download_media(msg, file=raw_path,
+                                           offset=b_start, limit=b_end - b_start)
+            print('   ✅ Partial downloaded')
+            start_s = 2   # partial file starts at our segment
         except TypeError:
-            # Telethon version doesn't support offset — fallback to full
-            print(f'   ⚠️ Partial download unsupported, downloading full...')
-            raw_path = str(await tg_client.download_media(msg, file=DOWNLOAD_FOLDER))
-            print(f'   ✅ Full downloaded')
+            print('   ⚠️ Partial unsupported, downloading full...')
+            raw_path = await download_with_retry(tg_client, msg, download_folder)
+            if not raw_path:
+                return False
 
-    # Create Short
-    short_path = os.path.join(DOWNLOAD_FOLDER, f'lf_{msg.id}_short.mp4')
+    short_path = os.path.join(download_folder, f'lf_{msg.id}_short.mp4')
     ok = make_short(raw_path, start_s, clip_dur, short_path)
-
     if os.path.exists(raw_path):
         os.remove(raw_path)
-
     if not ok:
         return False
 
-    translated, was_translated = translate_if_russian(caption)
-    base_title = translated.split('\n')[0].strip() if translated.strip() \
-                 else f'UFC Fight Clip {msg.date.strftime("%Y-%m-%d")}'
-    title = f'{base_title} #Shorts'[:100]
-    desc  = build_description(caption, translated, was_translated,
-                              extra_tags=SHORTS_HASHTAGS)
+    translated, was_russian = translate_if_russian(caption)
+    base = (translated.split('\n')[0].strip()
+            if translated.strip()
+            else f'{cfg["fallback_short_title_prefix"]} {msg.date.strftime("%Y-%m-%d")}')
+    title = f'{base} #Shorts'[:100]
+    desc  = build_description(cfg, caption, translated, was_russian, is_short=True)
     print(f'   Title: {title}')
 
     try:
-        upload_to_youtube(
-            youtube, short_path, title, desc,
-            tags=['UFC Shorts','MMA Shorts','Shorts','knockout',
-                  'UFC','MMA','fight clip','UFC highlights'],
-            is_short=True
-        )
-        save_uploaded_id(uid)
+        upload_to_youtube(youtube, cfg, short_path, title, desc,
+                          tags=cfg['shorts_tags'], is_short=True)
+        save_uploaded_id(cfg, uid)
         uploaded_ids.add(uid)
         return True
     except Exception as e:
@@ -568,37 +434,38 @@ async def process_longform(tg_client, youtube, msg, channel, uid, uploaded_ids):
             os.remove(short_path)
 
 
-async def process_archive(tg_client, youtube, msg, channel, uid, uploaded_ids):
-    """Archive clips: short ones upload as-is, long ones become Shorts."""
+async def process_archive(tg_client, youtube, cfg, msg, channel,
+                           uid, uploaded_ids, download_folder):
     duration = get_tg_video_duration(msg)
-    size_mb  = msg.media.document.size / 1024 / 1024
     caption  = (msg.text or '').strip()
+    size_mb  = msg.media.document.size / 1024 / 1024
 
     print(f'   🗂️  {size_mb:.1f} MB | {duration:.0f}s | ID: {msg.id}')
 
-    if duration > SHORT_MIN_SECS:
-        print(f'   📹 Long archive clip — routing to Short pipeline')
+    if duration > cfg['short_min_secs']:
+        print('   📹 Long archive clip → Short pipeline')
         uid_lf = uid.replace('archive_', 'longform_')
-        return await process_longform(tg_client, youtube, msg, channel, uid_lf, uploaded_ids)
+        return await process_longform(tg_client, youtube, cfg, msg, channel,
+                                      uid_lf, uploaded_ids, download_folder)
 
-    translated, was_translated = translate_if_russian(caption)
-    if was_translated:
+    translated, was_russian = translate_if_russian(caption)
+    if was_russian:
         print('   🌐 Translated from Russian')
 
-    title = translated.split('\n')[0].strip()[:100] if translated.strip() \
-            else f'UFC Classic {msg.date.strftime("%Y-%m-%d")}'
-    desc  = build_description(caption, translated, was_translated)
+    title = (translated.split('\n')[0].strip()[:100]
+             if translated.strip()
+             else f'{cfg["fallback_archive_title_prefix"]} {msg.date.strftime("%Y-%m-%d")}')
+    desc  = build_description(cfg, caption, translated, was_russian)
     print(f'   Title: {title}')
 
-    print('   📥 Downloading...')
-    path = await download_with_retry(tg_client, msg)
-    if path is None:
+    path = await download_with_retry(tg_client, msg, download_folder)
+    if not path:
         return False
 
     path = apply_filter_and_reencode(path)
     try:
-        upload_to_youtube(youtube, path, title, desc)
-        save_uploaded_id(uid)
+        upload_to_youtube(youtube, cfg, path, title, desc)
+        save_uploaded_id(cfg, uid)
         uploaded_ids.add(uid)
         return True
     except Exception as e:
@@ -613,25 +480,27 @@ async def process_archive(tg_client, youtube, msg, channel, uid, uploaded_ids):
 #  MAIN
 # ============================================================
 
-async def main():
-    Path(DOWNLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
+async def main(cfg):
+    download_folder = f'/tmp/downloads_{cfg["niche"]}'
+    Path(download_folder).mkdir(parents=True, exist_ok=True)
 
     print('=' * 60)
-    print(f'🚀 Started: {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}')
+    print(f'🚀 Niche: {cfg["niche"].upper()} | {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}')
     print('=' * 60)
 
-    uploaded_ids  = load_uploaded_ids()
-    archive_state = load_archive_state()
+    uploaded_ids  = load_uploaded_ids(cfg)
+    archive_state = load_archive_state(cfg)
     print(f'📋 {len(uploaded_ids)} videos tracked')
 
     print('🔑 YouTube auth...')
-    youtube = get_youtube_service()
+    youtube = get_youtube_service(cfg)
     print('✅ YouTube ready')
 
     print('📡 Telegram connecting...')
     tg_client = TelegramClient(
         StringSession(os.environ.get('TELEGRAM_SESSION', '')),
-        TELEGRAM_API_ID, TELEGRAM_API_HASH
+        int(os.environ['TELEGRAM_API_ID']),
+        os.environ['TELEGRAM_API_HASH']
     )
     await tg_client.connect()
     print('✅ Telegram ready\n')
@@ -642,83 +511,97 @@ async def main():
     print('─' * 60)
     print('📺 PHASE 1: Tier channels')
     print('─' * 60)
-    slots = MAX_REGULAR_UPLOADS
-    for tier in sorted(CHANNELS):
-        for channel in CHANNELS[tier]:
+
+    channels_map = {int(k): v for k, v in cfg['channels'].items()}
+    slots = cfg['max_regular_uploads']
+
+    for tier in sorted(channels_map):
+        for channel in channels_map[tier]:
             if slots <= 0:
-                print(f'✋ Limit ({MAX_REGULAR_UPLOADS}) reached')
                 break
             print(f'\n[Tier {tier}] @{channel}')
             msg, uid = await get_latest_short_video(tg_client, channel, uploaded_ids)
             if msg is None:
                 print('   ⏭️  No new video')
                 continue
-            ok = await process_regular(tg_client, youtube, msg, channel, uid, uploaded_ids)
+            ok = await process_regular(tg_client, youtube, cfg, msg,
+                                       channel, uid, uploaded_ids, download_folder)
             if ok:
                 total += 1
                 slots -= 1
                 if slots > 0:
-                    await asyncio.sleep(UPLOAD_DELAY)
+                    await asyncio.sleep(cfg['upload_delay'])
 
     # ── PHASE 2: Longform → Short ─────────────────────────────
     print('\n' + '─' * 60)
     print('📹 PHASE 2: Longform → Short (max 1)')
     print('─' * 60)
+
     short_done = False
-    for channel in LONGFORM_CHANNELS:
+    for channel in cfg.get('longform_channels', []):
         if short_done:
             break
         print(f'\n[Longform] @{channel}')
-        msg, uid = await get_latest_longform_video(tg_client, channel, uploaded_ids)
+        msg, uid = await get_latest_longform_video(
+            tg_client, channel, uploaded_ids, cfg['short_min_secs'])
         if msg is None:
-            print('   ⏭️  No new longform video')
+            print('   ⏭️  No new longform')
             continue
-        ok = await process_longform(tg_client, youtube, msg, channel, uid, uploaded_ids)
+        ok = await process_longform(tg_client, youtube, cfg, msg,
+                                    channel, uid, uploaded_ids, download_folder)
         if ok:
             total += 1
             short_done = True
-            await asyncio.sleep(UPLOAD_DELAY)
+            await asyncio.sleep(cfg['upload_delay'])
 
-    if not LONGFORM_CHANNELS:
+    if not cfg.get('longform_channels'):
         print('   ℹ️  No longform channels configured')
     elif not short_done:
         print('   ℹ️  No new longform video found')
 
     # ── PHASE 3: Archive ──────────────────────────────────────
     print('\n' + '─' * 60)
-    print(f'🗂️  PHASE 3: Archive channels (max {MAX_ARCHIVE_UPLOADS})')
+    print(f'🗂️  PHASE 3: Archive (max {cfg["max_archive_uploads"]})')
     print('─' * 60)
+
     arch_count = 0
-    for channel in ARCHIVE_CHANNELS:
-        if arch_count >= MAX_ARCHIVE_UPLOADS:
+    for channel in cfg.get('archive_channels', []):
+        if arch_count >= cfg['max_archive_uploads']:
             break
         print(f'\n[Archive] @{channel}')
         msg, uid = await get_archive_video(tg_client, channel, uploaded_ids)
         if msg is None:
-            print('   ⏭️  No unuploaded clips found')
+            print('   ⏭️  No unuploaded clips')
             continue
-        ok = await process_archive(tg_client, youtube, msg, channel, uid, uploaded_ids)
+        ok = await process_archive(tg_client, youtube, cfg, msg,
+                                   channel, uid, uploaded_ids, download_folder)
         if ok:
             total += 1
             arch_count += 1
-            if arch_count < MAX_ARCHIVE_UPLOADS:
-                await asyncio.sleep(UPLOAD_DELAY)
+            if arch_count < cfg['max_archive_uploads']:
+                await asyncio.sleep(cfg['upload_delay'])
 
-    if not ARCHIVE_CHANNELS:
+    if not cfg.get('archive_channels'):
         print('   ℹ️  No archive channels configured')
 
-    # ── Done ──────────────────────────────────────────────────
+    # ── Wrap up ───────────────────────────────────────────────
     await tg_client.disconnect()
-    save_archive_state(archive_state)
+    save_archive_state(cfg, archive_state)
 
     print('\n' + '=' * 60)
-    print(f'✅ Run complete!')
-    print(f'   Regular  : {MAX_REGULAR_UPLOADS - slots}/{MAX_REGULAR_UPLOADS}')
-    print(f'   Shorts   : {"1" if short_done else "0"}/1')
-    print(f'   Archive  : {arch_count}/{MAX_ARCHIVE_UPLOADS}')
-    print(f'   Total    : {total}')
+    print(f'✅ {cfg["niche"].upper()} run complete!')
+    print(f'   Regular : {cfg["max_regular_uploads"] - slots}/{cfg["max_regular_uploads"]}')
+    print(f'   Shorts  : {"1" if short_done else "0"}/1')
+    print(f'   Archive : {arch_count}/{cfg["max_archive_uploads"]}')
+    print(f'   Total   : {total}')
     print('=' * 60)
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--niche', default=os.environ.get('NICHE', 'ufc'),
+                        help='Niche to run (e.g. ufc, animals)')
+    args = parser.parse_args()
+
+    cfg = load_config(args.niche)
+    asyncio.run(main(cfg))

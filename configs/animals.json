@@ -1,0 +1,70 @@
+{
+  "niche": "animals",
+  "youtube_category": "15",
+  "max_regular_uploads": 4,
+  "max_archive_uploads": 1,
+  "max_video_size_mb": 200,
+  "upload_delay": 5,
+  "short_duration": 58,
+  "short_min_secs": 180,
+
+  "channels": {
+    "1": [
+      "add_tier1_animal_channel_here"
+    ],
+    "2": [
+      "add_tier2_animal_channel_here"
+    ],
+    "3": []
+  },
+
+  "longform_channels": [],
+  "archive_channels":  [],
+
+  "early_keywords": [
+    "baby", "newborn", "cute", "puppy", "kitten", "chick",
+    "hatching", "birth", "born", "small", "tiny", "little"
+  ],
+  "late_keywords": [
+    "hunt", "chase", "attack", "fight", "catch", "predator",
+    "wild", "survival", "escape", "rescue", "migration"
+  ],
+
+  "video_hashtags": [
+    "#Animals", "#Wildlife", "#NatureVideos", "#AnimalLovers",
+    "#WildAnimals", "#CuteAnimals", "#NatureLovers", "#AnimalBehavior",
+    "#WildlifePhotography", "#NatureDocumentary", "#AnimalKingdom",
+    "#PetLovers", "#ExoticAnimals", "#Safari", "#NatureBeauty",
+    "#AnimalFacts", "#WildLife", "#NatureIsAmazing", "#AnimalWorld",
+    "#FunnyAnimals", "#CuteWildlife", "#BabyAnimals", "#Mammals",
+    "#Birds", "#OceanLife"
+  ],
+
+  "shorts_hashtags": [
+    "#Shorts", "#AnimalShorts", "#WildlifeShorts", "#CuteAnimals",
+    "#Animals", "#Wildlife", "#NatureShorts", "#BabyAnimals",
+    "#FunnyAnimals", "#AnimalLovers"
+  ],
+
+  "video_tags": [
+    "animals", "wildlife", "nature", "cute animals", "wild animals",
+    "animal behavior", "nature documentary", "animal kingdom",
+    "baby animals", "funny animals"
+  ],
+
+  "shorts_tags": [
+    "animal shorts", "wildlife shorts", "cute animals", "Shorts",
+    "animals", "nature", "baby animals", "funny animals"
+  ],
+
+  "fallback_title_prefix": "Amazing Wildlife",
+  "fallback_short_title_prefix": "Animal Clip",
+  "fallback_archive_title_prefix": "Wildlife Classic",
+
+  "youtube_client_id_secret":     "ANIMALS_YOUTUBE_CLIENT_ID",
+  "youtube_client_secret_secret": "ANIMALS_YOUTUBE_CLIENT_SECRET",
+  "youtube_refresh_token_secret": "ANIMALS_YOUTUBE_REFRESH_TOKEN",
+
+  "uploaded_log":  "uploaded_ids_animals.txt",
+  "archive_state": "archive_state_animals.json"
+}

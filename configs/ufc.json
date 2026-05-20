@@ -1,0 +1,65 @@
+{
+  "niche": "ufc",
+  "youtube_category": "17",
+  "max_regular_uploads": 4,
+  "max_archive_uploads": 1,
+  "max_video_size_mb": 200,
+  "upload_delay": 5,
+  "short_duration": 58,
+  "short_min_secs": 180,
+
+  "channels": {
+    "1": ["arman_ufc_official", "khabib_nurmagomedov", "ufc", "kchimaev"],
+    "2": ["mma_org", "danawhite"],
+    "3": []
+  },
+
+  "longform_channels": [],
+  "archive_channels":  [],
+
+  "early_keywords": [
+    "round 1", "r1", "first round", "1st round",
+    "tko", "ko", "knockout", "submission", "sub",
+    "finish", "stoppage", "tap", "tapout", "early"
+  ],
+  "late_keywords": [
+    "round 3", "round 4", "round 5", "r3", "r4", "r5",
+    "decision", "unanimous", "split", "judges",
+    "championship round", "main event", "five rounds"
+  ],
+
+  "video_hashtags": [
+    "#UFC", "#MMA", "#UFCHighlights", "#MixedMartialArts", "#UFCFights",
+    "#UFCNews", "#Knockout", "#KO", "#Submission", "#UFCChampion",
+    "#FightNight", "#PPV", "#Boxing", "#Kickboxing", "#BJJ",
+    "#Wrestling", "#Grappling", "#Khabib", "#IslamMakhachev",
+    "#JonJones", "#ConorMcGregor", "#UFCFightPass", "#MMAFighter",
+    "#CageMatch", "#Octagon"
+  ],
+
+  "shorts_hashtags": [
+    "#Shorts", "#UFCShorts", "#MMAShorts", "#FightShorts",
+    "#UFC", "#MMA", "#Knockout", "#Submission", "#FightFinish", "#Octagon"
+  ],
+
+  "video_tags": [
+    "UFC", "MMA", "UFC highlights", "mixed martial arts",
+    "knockout", "submission", "fight night", "octagon"
+  ],
+
+  "shorts_tags": [
+    "UFC Shorts", "MMA Shorts", "Shorts", "knockout",
+    "UFC", "MMA", "fight clip", "UFC highlights"
+  ],
+
+  "fallback_title_prefix": "UFC Highlights",
+  "fallback_short_title_prefix": "UFC Fight Clip",
+  "fallback_archive_title_prefix": "UFC Classic",
+
+  "youtube_client_id_secret":     "YOUTUBE_CLIENT_ID",
+  "youtube_client_secret_secret": "YOUTUBE_CLIENT_SECRET",
+  "youtube_refresh_token_secret": "YOUTUBE_REFRESH_TOKEN",
+
+  "uploaded_log":   "uploaded_ids_ufc.txt",
+  "archive_state":  "archive_state_ufc.json"
+}
