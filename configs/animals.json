@@ -10,16 +10,22 @@
 
   "channels": {
     "1": [
-      "add_tier1_animal_channel_here"
+      "animals_funny_videos",
+      "funnyanimals",
+      "BlazenAnimals",
+      "BestAnimalsVideos"
+
     ],
     "2": [
-      "add_tier2_animal_channel_here"
+      "CatsDogsClips"
+      
+      
     ],
     "3": []
   },
 
   "longform_channels": [],
-  "archive_channels":  [],
+  "archive_channels":  ["Fun_Animal_Clips","LolAnimalz","funny_ultimate_clips"],
 
   "early_keywords": [
     "baby", "newborn", "cute", "puppy", "kitten", "chick",
