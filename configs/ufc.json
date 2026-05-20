@@ -9,13 +9,16 @@
   "short_min_secs": 180,
 
   "channels": {
-    "1": ["arman_ufc_official", "khabib_nurmagomedov", "ufc", "kchimaev"],
-    "2": ["mma_org", "danawhite"],
+    "1": ["arman_ufc_official", "khabib_nurmagomedov", "Boxing_IBA", "kchimaev", "UsmnNurmagomedov", "UNMGDV", "fuigosquad", "twrtrw", "football_Clips8k", ""],
+    "2": ["mma_org", "danawhite", "wbcboxing_official", "rcc_sport"],
     "3": []
   },
 
-  "longform_channels": [],
-  "archive_channels":  [],
+  "longform_channels": [ ],
+  "archive_channels":  [ "wwe_chlips",
+     "Boxing_clips",
+     "football_clipsp",
+    "UFC_clip_sport"],
 
   "early_keywords": [
     "round 1", "r1", "first round", "1st round",
