@@ -13,3 +13,8 @@ tier_funnyanimals_3676
 tier_BlazenAnimals_79016
 tier_BestAnimalsVideos_178
 archive_Fun_Animal_Clips_80
+tier_funnyanimals_3679
+tier_BlazenAnimals_79052
+tier_BestAnimalsVideos_179
+tier_CatsDogsClips_412
+archive_Fun_Animal_Clips_79
